@@ -7,4 +7,4 @@ Open the HTML file, write your Python code, then click "Transpile to Malbolge" t
 The reason I chose Pagguba Impyrno as the name was because that's what you get when you translate "Break Hell" to Hiligaynon, which is a random cool-sounding language I chose on Google Translate.
 
 
-Currently it is so buggy that attempting to run print("Hello, World!") will either return !! or 䳻駝駝駜䳹駛䳸駚䳷, which according to Google Translate is "The camel-riding warrior gallops forth" in Chinese.
+Currently it is so buggy that attempting to run print("Hello, World!") will either return !! or 䳻駝駝駜䳹駛䳸駚䳷, which according to Google Translate is "The camel-riding warrior gallops forth" in Chinese. If you remove the all the 's, you get "The ostrich and the camel gallop side by side." This is why I believe Malbolge is secretly a conspiracy by camels and ostriches to rule the world.
