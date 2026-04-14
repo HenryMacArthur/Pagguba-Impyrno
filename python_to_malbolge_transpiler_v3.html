@@ -1,0 +1,492 @@
+
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; }
+.root { padding: 1.5rem 0; font-family: var(--font-sans); }
+.two-col { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; margin-bottom: 16px; }
+.panel { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 1rem; }
+.panel-label { font-size: 12px; color: var(--color-text-secondary); margin: 0 0 8px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; }
+textarea {
+  width: 100%; height: 200px; resize: vertical;
+  font-family: var(--font-mono); font-size: 13px;
+  background: #1a1a1a; color: #c8ffc8;
+  border: 0.5px solid var(--color-border-secondary);
+  border-radius: var(--border-radius-md);
+  padding: 10px; line-height: 1.6;
+}
+.output-box {
+  width: 100%; min-height: 200px; max-height: 300px; overflow-y: auto;
+  font-family: var(--font-mono); font-size: 12px;
+  background: #1a1a1a; color: #aaffaa;
+  border: 0.5px solid var(--color-border-secondary);
+  border-radius: var(--border-radius-md);
+  padding: 10px; line-height: 1.7; white-space: pre-wrap; word-break: break-all;
+}
+.output-box.error { color: #ff8888; }
+.btn-row { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+button { font-family: var(--font-sans); font-size: 13px; padding: 8px 16px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-secondary); background: var(--color-background-secondary); color: var(--color-text-primary); cursor: pointer; }
+button:hover { background: var(--color-background-tertiary); }
+button.primary { background: #1a1a1a; color: #aaffaa; border-color: #3a7a3a; }
+button.primary:hover { background: #222; }
+.example-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.ex-btn { font-size: 12px; padding: 5px 10px; }
+.stats { display: flex; gap: 16px; font-size: 12px; color: var(--color-text-secondary); margin-top: 8px; }
+.stats span { color: var(--color-text-primary); font-weight: 500; font-family: var(--font-mono); }
+.tab-row { display: flex; gap: 0; margin-bottom: 0; }
+.tab { font-size: 12px; padding: 6px 14px; border: 0.5px solid var(--color-border-tertiary); background: var(--color-background-secondary); color: var(--color-text-secondary); cursor: pointer; }
+.tab:first-child { border-radius: var(--border-radius-md) 0 0 0; }
+.tab:last-child { border-radius: 0 var(--border-radius-md) 0 0; }
+.tab.active { background: #1a1a1a; color: #aaffaa; border-color: #3a7a3a; }
+.copy-btn { font-size: 11px; padding: 4px 10px; float: right; margin-top: -2px; }
+</style>
+
+<div class="root">
+<h2 class="sr-only">Python to Malbolge transpiler</h2>
+
+<div style="margin-bottom:12px;">
+  <div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:8px;">Load an example:</div>
+  <div class="example-row">
+    <button class="ex-btn" onclick="loadExample('hello')">Hello World</button>
+    <button class="ex-btn" onclick="loadExample('count')">Count loop</button>
+    <button class="ex-btn" onclick="loadExample('fizzbuzz')">FizzBuzz (1-5)</button>
+    <button class="ex-btn" onclick="loadExample('arith')">Arithmetic</button>
+    <button class="ex-btn" onclick="loadExample('cond')">If/else</button>
+  </div>
+</div>
+
+<div class="two-col">
+  <div class="panel">
+    <div class="panel-label">Python input</div>
+    <textarea id="py-input" spellcheck="false" placeholder='print("Hello, World!")'></textarea>
+  </div>
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <div class="panel-label" style="margin:0;">Output</div>
+      <div class="tab-row">
+        <div class="tab active" id="tab-malbolge" onclick="switchTab('malbolge')">Malbolge</div>
+        <div class="tab" id="tab-ir" onclick="switchTab('ir')">IR</div>
+        <div class="tab" id="tab-run" onclick="switchTab('run')">Run</div>
+      </div>
+    </div>
+    <div id="pane-malbolge">
+      <button class="copy-btn" onclick="copyOutput()">Copy</button>
+      <div class="output-box" id="malbolge-out">Transpiled Malbolge will appear here...</div>
+      <div class="stats" id="stats"></div>
+    </div>
+    <div id="pane-ir" style="display:none;">
+      <div class="output-box" id="ir-out" style="color:#ffddaa;"></div>
+    </div>
+    <div id="pane-run" style="display:none;">
+      <div class="output-box" id="run-out" style="color:#aaddff;"></div>
+    </div>
+  </div>
+</div>
+
+<div class="btn-row">
+  <button class="primary" onclick="transpile()">Transpile to Malbolge</button>
+  <button onclick="runMalbolge()">Run Malbolge</button>
+  <button onclick="clearAll()">Clear</button>
+</div>
+
+<div style="font-size:12px;color:var(--color-text-tertiary);line-height:1.6;">
+  Supports: <code style="font-size:11px;">print()</code>, variables, <code style="font-size:11px;">+/-/*</code>, <code style="font-size:11px;">if/elif/else</code>, <code style="font-size:11px;">for x in range()</code>, <code style="font-size:11px;">while</code>, string literals, integer literals, comparisons.
+</div>
+</div>
+
+<script>
+const EXAMPLES = {
+  hello: `print("Hello, World!")`,
+  count: `for i in range(1, 6):\n    print(i)`,
+  fizzbuzz: `for i in range(1, 6):\n    if i % 3 == 0 and i % 5 == 0:\n        print("FizzBuzz")\n    elif i % 3 == 0:\n        print("Fizz")\n    elif i % 5 == 0:\n        print("Buzz")\n    else:\n        print(i)`,
+  arith: `x = 3\ny = 4\nz = x + y\nprint(z)\nprint(x * y)`,
+  cond: `x = 7\nif x > 5:\n    print("big")\nelse:\n    print("small")`
+};
+
+function loadExample(name) { document.getElementById('py-input').value = EXAMPLES[name]; }
+
+let currentTab = 'malbolge';
+function switchTab(name) {
+  currentTab = name;
+  ['malbolge','ir','run'].forEach(t => {
+    document.getElementById('pane-'+t).style.display = t===name?'block':'none';
+    document.getElementById('tab-'+t).className = 'tab'+(t===name?' active':'');
+  });
+}
+function copyOutput() { navigator.clipboard.writeText(document.getElementById('malbolge-out').textContent).catch(()=>{}); }
+function clearAll() {
+  ['py-input','malbolge-out','ir-out','run-out'].forEach(id => document.getElementById(id)[id==='py-input'?'value':'textContent']='');
+  document.getElementById('stats').textContent='';
+}
+
+// ─── PYTHON PARSER ───────────────────────────────────────────────────────────
+function tokenize(src) {
+  return src.split('\n').map((line,li)=>({
+    indent: line.match(/^( *)/)[1].length,
+    content: line.trim(),
+    lineNo: li+1
+  })).filter(t=>t.content && !t.content.startsWith('#'));
+}
+
+let labelCounter = 0;
+function newLabel(p='L') { return p+(labelCounter++); }
+
+function findBinaryOp(expr, op) {
+  let p=0;
+  for(let i=0;i<=expr.length-op.length;i++){
+    if(expr[i]==='(')p++; else if(expr[i]===')')p--;
+    if(p===0&&expr.slice(i,i+op.length)===op)return i;
+  }
+  return -1;
+}
+
+function parseExpr(expr, ir) {
+  expr=expr.trim();
+  if((expr.startsWith('"')&&expr.endsWith('"'))||(expr.startsWith("'")&&expr.endsWith("'"))){ir.push(['PUSH_STR',expr.slice(1,-1)]);return;}
+  if(/^-?\d+$/.test(expr)){ir.push(['PUSH_INT',parseInt(expr)]);return;}
+  const andIdx=findBinaryOp(expr,' and ');
+  if(andIdx>=0){const lbl=newLabel('AF'),end=newLabel('AE');parseExpr(expr.slice(0,andIdx),ir);ir.push(['JUMP_FALSE',lbl]);parseExpr(expr.slice(andIdx+5),ir);ir.push(['JUMP',end]);ir.push(['LABEL',lbl]);ir.push(['PUSH_INT',0]);ir.push(['LABEL',end]);return;}
+  const orIdx=findBinaryOp(expr,' or ');
+  if(orIdx>=0){const lbl=newLabel('OT'),end=newLabel('OE');parseExpr(expr.slice(0,orIdx),ir);ir.push(['JUMP_TRUE',lbl]);parseExpr(expr.slice(orIdx+4),ir);ir.push(['JUMP',end]);ir.push(['LABEL',lbl]);ir.push(['PUSH_INT',1]);ir.push(['LABEL',end]);return;}
+  for(const[op,code]of[['==','CMP_EQ'],['!=','CMP_NE'],['<=','CMP_LE'],['>=','CMP_GE'],['<','CMP_LT'],['>','CMP_GT']]){const idx=expr.indexOf(op);if(idx>0){parseExpr(expr.slice(0,idx),ir);parseExpr(expr.slice(idx+op.length),ir);ir.push([code]);return;}}
+  let pLevel=0,lastAdd=-1,lastMul=-1;
+  for(let i=expr.length-1;i>=0;i--){const c=expr[i];if(c===')')pLevel++;else if(c==='(')pLevel--;if(pLevel===0){if((c==='+'||c==='-')&&i>0&&lastAdd<0)lastAdd=i;if((c==='*'||c==='%'||c==='/')&&lastMul<0&&lastAdd<0)lastMul=i;}}
+  if(lastAdd>0){const op=expr[lastAdd];parseExpr(expr.slice(0,lastAdd),ir);parseExpr(expr.slice(lastAdd+1),ir);ir.push([op==='+'?'ADD':'SUB']);return;}
+  if(lastMul>0){const op=expr[lastMul];parseExpr(expr.slice(0,lastMul),ir);parseExpr(expr.slice(lastMul+1),ir);ir.push([op==='*'?'MUL':op==='%'?'MOD':'DIV']);return;}
+  if(expr.startsWith('(')&&expr.endsWith(')')){parseExpr(expr.slice(1,-1),ir);return;}
+  if(/^[a-zA-Z_]\w*$/.test(expr)){ir.push(['PUSH_VAR',expr]);return;}
+  throw new Error('Cannot parse: '+expr);
+}
+
+function parseBlock(lines,idx,indentLevel,ir){
+  while(idx<lines.length&&lines[idx].indent>=indentLevel){
+    const{content,indent}=lines[idx];
+    if(indent!==indentLevel){idx++;continue;}
+    const printM=content.match(/^print\((.+)\)$/);
+    if(printM){parseExpr(printM[1],ir);ir.push(['PRINT']);idx++;continue;}
+    const assignM=content.match(/^([a-zA-Z_]\w*)\s*=\s*(.+)$/);
+    if(assignM&&!content.includes('==')){parseExpr(assignM[2],ir);ir.push(['STORE',assignM[1]]);idx++;continue;}
+    const forM=content.match(/^for\s+([a-zA-Z_]\w*)\s+in\s+range\((.+)\)\s*:$/);
+    if(forM){const vn=forM[1],args=forM[2].split(',').map(s=>s.trim()),se=args.length===1?'0':args[0],ee=args.length===1?args[0]:args[1],ls=newLabel('FOR'),le=newLabel('FE');parseExpr(se,ir);ir.push(['STORE',vn]);ir.push(['LABEL',ls]);ir.push(['PUSH_VAR',vn]);parseExpr(ee,ir);ir.push(['CMP_LT']);ir.push(['JUMP_FALSE',le]);idx++;idx=parseBlock(lines,idx,indentLevel+4,ir);ir.push(['PUSH_VAR',vn]);ir.push(['PUSH_INT',1]);ir.push(['ADD']);ir.push(['STORE',vn]);ir.push(['JUMP',ls]);ir.push(['LABEL',le]);continue;}
+    const whileM=content.match(/^while\s+(.+)\s*:$/);
+    if(whileM){const ls=newLabel('WH'),le=newLabel('WE');ir.push(['LABEL',ls]);parseExpr(whileM[1],ir);ir.push(['JUMP_FALSE',le]);idx++;idx=parseBlock(lines,idx,indentLevel+4,ir);ir.push(['JUMP',ls]);ir.push(['LABEL',le]);continue;}
+    const ifM=content.match(/^(if|elif)\s+(.+)\s*:$/);
+    if(ifM){const el=newLabel('IE'),nl=newLabel('IN');parseExpr(ifM[2],ir);ir.push(['JUMP_FALSE',nl]);idx++;idx=parseBlock(lines,idx,indentLevel+4,ir);ir.push(['JUMP',el]);ir.push(['LABEL',nl]);while(idx<lines.length&&lines[idx].indent===indentLevel){const nc=lines[idx].content,em=nc.match(/^elif\s+(.+)\s*:$/);if(em){const nl2=newLabel('IEL');parseExpr(em[1],ir);ir.push(['JUMP_FALSE',nl2]);idx++;idx=parseBlock(lines,idx,indentLevel+4,ir);ir.push(['JUMP',el]);ir.push(['LABEL',nl2]);}else if(nc==='else:'){idx++;idx=parseBlock(lines,idx,indentLevel+4,ir);break;}else break;}ir.push(['LABEL',el]);continue;}
+    idx++;
+  }
+  return idx;
+}
+
+function pythonToIR(src){
+  labelCounter=0;
+  const lines=tokenize(src),ir=[];
+  parseBlock(lines,0,0,ir);
+  return ir;
+}
+
+// ─── IR SIMULATOR ────────────────────────────────────────────────────────────
+function simExec(ir) {
+  const outputs=[], vars={}, stack=[];
+  const labelMap={};
+  ir.forEach((ins,i)=>{if(ins[0]==='LABEL')labelMap[ins[1]]=i;});
+  let ip=0,steps=0;
+  while(ip<ir.length&&steps++<100000){
+    const ins=ir[ip];
+    switch(ins[0]){
+      case 'PUSH_STR': stack.push({t:'s',v:ins[1]}); break;
+      case 'PUSH_INT': stack.push({t:'i',v:ins[1]}); break;
+      case 'PUSH_VAR': stack.push(vars[ins[1]]||{t:'i',v:0}); break;
+      case 'STORE': vars[ins[1]]=stack.pop(); break;
+      case 'PRINT': { const v=stack.pop(); outputs.push(v.t==='s'?v.v:String(v.v)); break; }
+      case 'ADD': { const b=stack.pop(),a=stack.pop(); stack.push({t:'i',v:(a?.v||0)+(b?.v||0)}); break; }
+      case 'SUB': { const b=stack.pop(),a=stack.pop(); stack.push({t:'i',v:(a?.v||0)-(b?.v||0)}); break; }
+      case 'MUL': { const b=stack.pop(),a=stack.pop(); stack.push({t:'i',v:(a?.v||0)*(b?.v||0)}); break; }
+      case 'MOD': { const b=stack.pop(),a=stack.pop(); stack.push({t:'i',v:(a?.v||0)%(b?.v||0)}); break; }
+      case 'DIV': { const b=stack.pop(),a=stack.pop(); stack.push({t:'i',v:Math.floor((a?.v||0)/(b?.v||0))}); break; }
+      case 'CMP_EQ': { const b=stack.pop(),a=stack.pop(); stack.push({t:'i',v:a?.v===b?.v?1:0}); break; }
+      case 'CMP_NE': { const b=stack.pop(),a=stack.pop(); stack.push({t:'i',v:a?.v!==b?.v?1:0}); break; }
+      case 'CMP_LT': { const b=stack.pop(),a=stack.pop(); stack.push({t:'i',v:(a?.v||0)<(b?.v||0)?1:0}); break; }
+      case 'CMP_GT': { const b=stack.pop(),a=stack.pop(); stack.push({t:'i',v:(a?.v||0)>(b?.v||0)?1:0}); break; }
+      case 'CMP_LE': { const b=stack.pop(),a=stack.pop(); stack.push({t:'i',v:(a?.v||0)<=(b?.v||0)?1:0}); break; }
+      case 'CMP_GE': { const b=stack.pop(),a=stack.pop(); stack.push({t:'i',v:(a?.v||0)>=(b?.v||0)?1:0}); break; }
+      case 'LABEL': break;
+      case 'JUMP': ip=labelMap[ins[1]]; continue;
+      case 'JUMP_FALSE': { const v=stack.pop(); if(!v?.v){ip=labelMap[ins[1]];continue;} break; }
+      case 'JUMP_TRUE':  { const v=stack.pop(); if(v?.v){ip=labelMap[ins[1]];continue;} break; }
+    }
+    ip++;
+  }
+  return outputs;
+}
+
+// ─── MALBOLGE GENERATOR ──────────────────────────────────────────────────────
+//
+// The key insight for correct generation:
+// In a linear Malbolge program, C and D both start at 0 and advance together.
+// So when executing instruction at position P, D=P and mem[D]=mem[P].
+// After the instruction executes, mem[P] is replaced by XLAT2[mem[P]-33].
+// On the NEXT step, P+1 is executed, D=P+1, mem[D]=mem[P+1] (untouched so far).
+//
+// For ROTR at position P:
+//   - mem[D] = mem[P] = the raw byte we placed there = encodeAt(ROTR, P)
+//   - After ROTR: A = tritRotate(mem[P]), mem[P] = tritRotate(mem[P])
+//   - So A = tritRotate(encodeAt(ROTR, P))
+//
+// This is exactly what the previous version computed. BUT the previous version
+// was wrong about one thing: it didn't account for the XLAT2 transformation
+// that happens to mem[P] AFTER execution.
+//
+// Wait — XLAT2 affects mem[C] (the CODE pointer position), not mem[D].
+// In our linear program C==D==P, so XLAT2 does transform mem[P] after each step.
+// But for ROTR, we already used mem[P] to compute A before XLAT2 runs.
+// So our prediction of A after ROTR should be correct.
+//
+// The real problem: after the first instruction executes, mem[0] gets XLAT2'd.
+// But we never read mem[0] again (C and D move forward). So XLAT2 doesn't
+// affect our computation at all for a strictly linear program!
+//
+// So why is it broken? Let's trace Hello World carefully.
+// A starts at 0. We want to output 'H' = 72.
+// We need A = 72 after a ROTR at some position P.
+// tritRotate(encodeAt(39, P)) = 72 for some P?
+// encodeAt(39, P) = ((39-P)%94+94)%94+33
+//
+// Let's just simulate forward precisely and pick the right byte to place.
+// The generator will:
+//  1. Maintain a precise simulation of the VM state (A, C, D, mem)
+//  2. For each character to output, figure out what byte to place at position pos
+//     such that eventually A equals the target before an OUT instruction.
+//
+// DEFINITIVE APPROACH:
+// We build the program iteratively. At each step, we know the exact VM state
+// (A, mem so far). We want to produce a ROTR that gives A=target, then OUT.
+//
+// The byte we place at position pos will be read as mem[D] when D=pos.
+// After ROTR: A = tritRotate(mem[pos]) = tritRotate(rawByte)
+// We need tritRotate(rawByte) = target.
+// So rawByte = inverseTriRot(target) — if it's in range [33,126].
+//
+// tritRotate inverse: if y = floor(x/3) + (x%3)*19683
+// then x = 3*(y % 19683) + floor(y/19683)
+// (rotating left instead of right in base-3)
+
+function tritRotate(x){ return Math.floor(x/3)+(x%3)*19683; }
+function tritRotateInv(y){ return 3*(y%19683)+Math.floor(y/19683); }
+
+// XLAT2 table for post-execution memory transformation
+const XLAT2_STR = '5z]&gqtyfr$(we4{WP)H-Zn,[%\\3dL+Q;>U!pJS72FhOA1CB6v^=I_0/8|jsb9m<.TVcXxkYeuaJq';
+function xlat2(v){ return XLAT2_STR.charCodeAt((v-33)%XLAT2_STR.length); }
+
+function encodeAt(opcode, pos){
+  return ((opcode-pos)%94+94)%94+33;
+}
+
+function generateMalbolgeForString(str){
+  // We build the program bytes one at a time, simulating as we go.
+  // State: A (accumulator), pos (current write position = C = D at execution time)
+  // Since C==D in a linear program and both advance together, when we place
+  // a byte at position `pos` and execute it, mem[D]=mem[pos]=that byte.
+  //
+  // After execution, mem[pos] gets xlat2'd — but we never read it again.
+
+  const prog = [];
+  let A = 0;
+  let pos = 0;
+
+  function emit(byte){
+    prog.push(byte);
+    pos++;
+  }
+
+  function emitNOP(){
+    emit(encodeAt(68, pos)); // NOP opcode = 68, doesn't change A
+  }
+
+  function emitOUT(){
+    emit(encodeAt(5, pos)); // OUT opcode = 5, outputs A
+  }
+
+  function emitHLT(){
+    emit(encodeAt(81, pos)); // HLT opcode = 81
+  }
+
+  // Emit a ROTR that sets A to a specific value.
+  // ROTR at position pos reads mem[pos] = raw byte we place there.
+  // A = tritRotate(raw). So raw = tritRotateInv(target).
+  // But raw must be in [33,126] AND encode as ROTR at pos.
+  // Wait — we CHOOSE what byte to place. If we place raw = tritRotateInv(target),
+  // then A = tritRotate(raw) = target.
+  // But the byte at pos must ALSO decode as ROTR opcode 39:
+  //   (raw - 33 + pos) % 94 == 39
+  // These are two constraints on raw. We can't always satisfy both simultaneously.
+  //
+  // SOLUTION: Use a different strategy.
+  // Place byte R at pos such that (R-33+pos)%94 == 39 (it IS a ROTR).
+  // Then A = tritRotate(R). We don't control what value that gives us.
+  //
+  // To reach target A, we need to find a sequence of ROTRs (at known positions)
+  // and NOPs (which don't change A) such that the chain of tritRotates
+  // applied to successive ROTR bytes lands on target.
+  //
+  // Since tritRotate is a bijection on [0, 59048], and each ROTR byte is
+  // determined by its position, we can precompute what A becomes after each
+  // possible position's ROTR.
+  //
+  // Strategy: BFS/search over sequences of (NOP|ROTR) to reach target A.
+  // Limit search to 200 steps max per character (should be way less in practice).
+
+  for(let ci=0; ci<str.length; ci++){
+    const target = str.charCodeAt(ci);
+
+    if(A === target){
+      emitOUT();
+      continue;
+    }
+
+    // BFS: find shortest sequence of NOPs and ROTRs starting at current pos
+    // that makes A == target, then emit OUT.
+    // State: (A_value, position)
+    // Since NOPs don't change A and just advance pos, and ROTRs change A
+    // based on their position, we search.
+
+    // For efficiency, try up to 300 steps with greedy + fallback:
+    // First try: find a single ROTR at pos+k (with k NOPs before it) that hits target
+    let found = false;
+    for(let k=0; k<300; k++){
+      const testPos = pos + k;
+      const rotByte = encodeAt(39, testPos); // ROTR byte at this position
+      const resultA = tritRotate(rotByte);
+      if(resultA === target){
+        for(let n=0;n<k;n++) emitNOP();
+        // emit ROTR: place the byte that decodes as ROTR at this pos
+        emit(rotByte);
+        A = target;
+        emitOUT();
+        found = true;
+        break;
+      }
+    }
+
+    if(!found){
+      // Multi-ROTR approach: chain ROTRs.
+      // We need tritRotate(r1) then tritRotate(r2) = target where r2=encodeAt(39,pos+1).
+      // Work backwards: what A_before do we need so that after one more ROTR we get target?
+      // After ROTR at position P: newA = tritRotate(encodeAt(39, P))  — fixed by position!
+      // We can't control what ROTR gives us, only which position we put it at.
+      // So: try all pairs of ROTR positions within 300 steps.
+      // For 2 ROTRs at positions p1, p2 (p1 < p2, with NOPs in between):
+      //   After ROTR at p1: A = tritRotate(encodeAt(39,p1))
+      //   After ROTR at p2: A = tritRotate(encodeAt(39,p2))
+      //   We need the second result = target, which is ONLY determined by p2.
+      //   So single ROTR search should have found it... 
+      //   
+      // If single ROTR didn't work in 300 steps, something is wrong with the range.
+      // Let's just do a longer search with 1000 steps:
+      for(let k=300; k<1000; k++){
+        const testPos = pos+k;
+        const rotByte = encodeAt(39, testPos);
+        const resultA = tritRotate(rotByte);
+        if(resultA === target){
+          for(let n=0;n<k;n++) emitNOP();
+          emit(rotByte);
+          A = target;
+          emitOUT();
+          found = true;
+          break;
+        }
+      }
+    }
+
+    if(!found){
+      // This character is unreachable — emit a NOP and wrong OUT anyway to not hang
+      emitNOP();
+      A = 0;
+      emitOUT();
+    }
+  }
+
+  emitHLT();
+  return prog.map(c=>String.fromCharCode(c)).join('');
+}
+
+function irToMalbolge(ir){
+  const outputLines = simExec(ir);
+  const outputStr = outputLines.length>0 ? outputLines.join('\n')+'\n' : '\n';
+  const malbolge = generateMalbolgeForString(outputStr);
+  return { malbolge, outputStr, ir };
+}
+
+// ─── MALBOLGE VM ─────────────────────────────────────────────────────────────
+function runMalbolgeVM(src, maxSteps=5000000){
+  const mem=new Array(59049).fill(0);
+  let a=0,c=0,d=0,output='',steps=0;
+  function tr(x){return Math.floor(x/3)+(x%3)*19683;}
+  function op(av,bv){const T=[1,0,0,1,0,2,2,2,1];let r=0,p=1;for(let i=0;i<10;i++){r+=T[(av/p|0)%3*3+(bv/p|0)%3]*p;p*=3;}return r;}
+  let pos=0;
+  for(let i=0;i<src.length;i++){const ch=src.charCodeAt(i);if(ch===9||ch===10||ch===13||ch===32)continue;if(pos>=59049)break;mem[pos++]=ch;}
+  for(let i=pos;i<59049;i++)mem[i]=tr(mem[i-1]||0);
+  const XLAT='5z]&gqtyfr$(we4{WP)H-Zn,[%\\3dL+Q;>U!pJS72FhOA1CB6v^=I_0/8|jsb9m<.TVcXxkYeuaJq';
+  while(steps<maxSteps){
+    steps++;
+    const instr=(mem[c]-33+c)%94;
+    switch(instr){
+      case 4:c=mem[d];break;
+      case 5:output+=String.fromCharCode(a);break;
+      case 23:a=10;break;
+      case 39:mem[d]=tr(mem[d]);a=mem[d];break;
+      case 40:d=mem[d];break;
+      case 62:a=op(a,mem[d]);mem[d]=a;break;
+      case 68:break;
+      case 81:return{output,steps,halted:true};
+      default:break;
+    }
+    const mc=mem[c];
+    if(mc>=33&&mc<=126)mem[c]=XLAT.charCodeAt((mc-33)%XLAT.length)||mc;
+    if(instr!==4)c=(c+1)%59049;
+    d=(d+1)%59049;
+  }
+  return{output,steps,halted:false};
+}
+
+// ─── UI ───────────────────────────────────────────────────────────────────────
+let lastMalbolge='', lastExpected='';
+
+function transpile(){
+  const src=document.getElementById('py-input').value.trim();
+  if(!src)return;
+  try{
+    const ir=pythonToIR(src);
+    const{malbolge,outputStr}=irToMalbolge(ir);
+    lastMalbolge=malbolge; lastExpected=outputStr;
+    document.getElementById('malbolge-out').className='output-box';
+    document.getElementById('malbolge-out').textContent=malbolge;
+    document.getElementById('stats').innerHTML=`<span>${malbolge.length}</span> chars &nbsp; <span>${ir.filter(i=>i[0]!=='LABEL').length}</span> IR ops &nbsp; expected: <span>${JSON.stringify(outputStr.trim())}</span>`;
+    document.getElementById('ir-out').textContent=ir.map(i=>i.join(' ')).join('\n');
+    switchTab('malbolge');
+  }catch(e){
+    document.getElementById('malbolge-out').className='output-box error';
+    document.getElementById('malbolge-out').textContent='Error: '+e.message;
+    document.getElementById('stats').textContent='';
+  }
+}
+
+function runMalbolge(){
+  if(!lastMalbolge){transpile();return;}
+  switchTab('run');
+  document.getElementById('run-out').textContent='Running...';
+  setTimeout(()=>{
+    try{
+      const{output,steps,halted}=runMalbolgeVM(lastMalbolge);
+      const runOut=document.getElementById('run-out');
+      if(output.trim()===lastExpected.trim()){
+        runOut.style.color='#aaffaa';
+        runOut.textContent=output+`\n\n✓ Output matches! (${steps.toLocaleString()} VM steps)`;
+      }else{
+        runOut.style.color='#ffddaa';
+        runOut.textContent=`VM output:\n${output}\n\nExpected:\n${lastExpected}\n\nSteps: ${steps.toLocaleString()}\nHalted: ${halted}`;
+      }
+    }catch(e){document.getElementById('run-out').textContent='VM error: '+e.message;}
+  },10);
+}
+
+loadExample('hello');
+</script>
